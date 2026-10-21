@@ -19,7 +19,7 @@
 /window-shot*.png
 
 # ---- 编辑器 / 系统 ----
-.vscode/
+# .vscode/
 .idea/
 *.swp
 *~
