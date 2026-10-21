@@ -968,6 +968,20 @@ impl App {
         Some((v.full_path(e), v.name(e).to_owned(), v.prefix(e).to_owned()))
     }
 
+    /// The folder a row stands for: the containing folder of a file, the folder
+    /// itself for a directory. This is what "copy path" puts on the clipboard,
+    /// so the text can be pasted into an Explorer address bar / file dialog.
+    fn selected_folder(&self) -> Option<String> {
+        let sel = self.selected?;
+        let hit = *self.hits.get(sel)?;
+        let (v, e) = self.entry(hit)?;
+        Some(if e.is_dir {
+            v.full_path(e)
+        } else {
+            v.prefix(e).to_owned()
+        })
+    }
+
     fn total_text(&self) -> String {
         let (files, dirs, bytes) = self.total_stats();
         i18n::total_line(&format_count(files), &format_count(dirs), &format_size(bytes))
@@ -1599,10 +1613,13 @@ unsafe fn copy_selected(kind: CopyKind) {
             i18n::copied_name_status().to_owned(),
             clipboard_text(&name),
         ),
-        CopyKind::Path => (
-            i18n::copied_path_status().to_owned(),
-            clipboard_text(&path),
-        ),
+        CopyKind::Path => {
+            let folder = with_app(|a| a.selected_folder()).flatten().unwrap_or_default();
+            (
+                i18n::copied_path_status().to_owned(),
+                clipboard_text(&folder),
+            )
+        }
     };
     let text = match result {
         Ok(()) => ok_text,

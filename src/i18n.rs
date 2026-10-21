@@ -158,7 +158,7 @@ pub fn copied_name_status() -> &'static str {
 }
 
 pub fn copied_path_status() -> &'static str {
-    tr("已复制路径", "Path copied")
+    tr("已复制文件夹路径", "Folder path copied")
 }
 
 pub fn admin_title() -> &'static str {
