@@ -188,8 +188,8 @@ pub fn clipboard_files(paths: &[String], cut: bool) -> anyhow::Result<()> {
 }
 
 /// Put UTF-16 text on the clipboard (`CF_UNICODETEXT`), so any other app can
-/// paste it. Done with Win32 directly instead of egui's clipboard so it cannot
-/// silently fall back to an in-process buffer.
+/// paste it. Uses the Win32 clipboard directly so it cannot silently fall back
+/// to an in-process buffer.
 pub fn clipboard_text(text: &str) -> anyhow::Result<()> {
     use windows_sys::Win32::Foundation::{GlobalFree, HWND};
     use windows_sys::Win32::System::DataExchange::{
@@ -240,26 +240,47 @@ pub fn clipboard_text(text: &str) -> anyhow::Result<()> {
     }
 }
 
-/// Capture the whole window, title bar included, into a PNG.
+/// Capture the window (or just its client area) into a PNG.
 ///
-/// Used by the hidden `--window-shot` debug flag: the app can screenshot itself
-/// even when no other process can enumerate its window.
+/// Used by the hidden `--window-shot` / `--screenshot` debug flags. The pixels
+/// are copied off the screen (the caller makes the window topmost first), since
+/// `PrintWindow` renders text unreliably for this UI.
 pub fn capture_window(
     hwnd: *mut core::ffi::c_void,
     path: &std::path::Path,
+    client_only: bool,
 ) -> anyhow::Result<()> {
-    use windows_sys::Win32::Foundation::{HWND, RECT};
+    use windows_sys::Win32::Foundation::{HWND, POINT, RECT};
     use windows_sys::Win32::Graphics::Gdi::{
-        CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GetDC, ReleaseDC,
-        SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
+        BitBlt, ClientToScreen, CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject,
+        GetDC, ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, CAPTUREBLT,
+        DIB_RGB_COLORS, SRCCOPY,
     };
-    use windows_sys::Win32::Storage::Xps::PrintWindow;
-    use windows_sys::Win32::UI::WindowsAndMessaging::{GetWindowRect, PW_RENDERFULLCONTENT};
+    use windows_sys::Win32::Storage::Xps::{PrintWindow, PW_CLIENTONLY};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetClientRect, GetWindowRect, PW_RENDERFULLCONTENT,
+    };
 
     unsafe {
         let mut rect = RECT::default();
-        if GetWindowRect(hwnd as HWND, &mut rect) == 0 {
-            anyhow::bail!("GetWindowRect 失败: {}", error_text(last_error()));
+        let mut screen_origin = POINT { x: 0, y: 0 };
+        if client_only {
+            if GetClientRect(hwnd as HWND, &mut rect) == 0 {
+                anyhow::bail!("GetClientRect 失败: {}", error_text(last_error()));
+            }
+            ClientToScreen(hwnd as HWND, &mut screen_origin);
+        } else {
+            if GetWindowRect(hwnd as HWND, &mut rect) == 0 {
+                anyhow::bail!("GetWindowRect 失败: {}", error_text(last_error()));
+            }
+            screen_origin = POINT {
+                x: rect.left,
+                y: rect.top,
+            };
+            rect.right -= rect.left;
+            rect.bottom -= rect.top;
+            rect.left = 0;
+            rect.top = 0;
         }
         let w = (rect.right - rect.left).max(1) as u32;
         let h = (rect.bottom - rect.top).max(1) as u32;
@@ -294,7 +315,25 @@ pub fn capture_window(
             anyhow::bail!("CreateDIBSection 失败");
         }
         let old = SelectObject(mem, dib);
-        let ok = PrintWindow(hwnd as HWND, mem, PW_RENDERFULLCONTENT);
+        let flags = if client_only {
+            PW_CLIENTONLY | PW_RENDERFULLCONTENT
+        } else {
+            PW_RENDERFULLCONTENT
+        };
+        let mut ok = BitBlt(
+            mem,
+            0,
+            0,
+            w as i32,
+            h as i32,
+            screen,
+            screen_origin.x,
+            screen_origin.y,
+            SRCCOPY | CAPTUREBLT,
+        );
+        if ok == 0 {
+            ok = PrintWindow(hwnd as HWND, mem, flags);
+        }
         SelectObject(mem, old);
 
         let mut rgba = Vec::with_capacity((w * h * 4) as usize);
@@ -310,7 +349,7 @@ pub fn capture_window(
         ReleaseDC(std::ptr::null_mut(), screen);
 
         if ok == 0 {
-            anyhow::bail!("PrintWindow 失败: {}", error_text(last_error()));
+            anyhow::bail!("BitBlt 失败: {}", error_text(last_error()));
         }
         crate::png::write_rgba(path, w as usize, h as usize, &rgba)?;
         Ok(())
@@ -329,8 +368,8 @@ pub fn pick_folder(title: &str) -> Option<String> {
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::GetActiveWindow;
 
     unsafe {
-        // eframe normally has COM ready on the main thread; calling this again is
-        // harmless and also covers the case where it is not.
+        // The shell picker needs COM on this thread; initialising twice is
+        // harmless and covers a caller that has not done it yet.
         let hr = CoInitializeEx(std::ptr::null(), COINIT_APARTMENTTHREADED as u32);
         let com_ready = hr >= 0;
 

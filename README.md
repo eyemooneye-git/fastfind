@@ -3,7 +3,8 @@
 一个类似 [Everything](https://www.voidtools.com/) 的 Windows 文件名搜索小工具：直接读取 NTFS 的
 `$MFT`（主文件表）建立内存索引，百万级文件也能在 1~2 秒内建好索引、几毫秒内出结果。
 
-界面是 Rust + egui 写的原生窗口，单个 exe，无运行时依赖。
+界面全部使用 Windows 原生控件（EDIT / BUTTON / SysListView32 / 进度条 / 状态栏），没有第三方 GUI 框架，
+也没有 GPU 依赖（只有几个标签和提示文字是窗口自己在 `WM_PAINT` 里画的）；单个 exe，无运行时依赖。
 
 ![截图](screenshot.png)
 
@@ -72,7 +73,7 @@ D 盘 5,351 个文件约 20 ms；exFAT 的 U 盘会提示不支持并跳过。
 - 搜索时先用名字匹配（`*.ext` / `prefix*` / `*x*` 会编译成专用的后缀/前缀/子串匹配器）筛掉绝大多数
   条目，再对候选做目录祖先链检查。搜索在独立线程执行，输入变化会合并请求、丢弃过期结果。
 - 剪贴板走 Win32：文件用 `CF_HDROP`（`Preferred DropEffect` 设为复制），文本用
-  `CF_UNICODETEXT`，所以资源管理器、记事本等任何程序都能粘贴；文本复制不依赖 egui 的内部剪贴板。
+  `CF_UNICODETEXT`，所以资源管理器、记事本等任何程序都能粘贴。
 
 ## 限制与已知差异
 
@@ -94,10 +95,13 @@ cargo build --release
 # 产物：target\release\fastfind.exe
 ```
 
-依赖：`eframe`/`egui`（界面）、`egui_extras`（表格）、`windows-sys`（Win32 API）、`rayon`（并行解析）、
-`memchr`（子串搜索）、`anyhow`。图标只有一份：`assets/fastfind.ico` 由 `app.rc` + `build.rs` 编进 exe，
-运行时 `src/icon.rs` 再用 `LoadImage` + `WM_SETICON` 把同一个资源挂到窗口上（不依赖 eframe 的
-`GetActiveWindow` 逻辑），所以资源管理器、标题栏、任务栏的图标完全一致。
+依赖：`windows-sys`（Win32 API）、`rayon`（并行解析）、`memchr`（子串搜索）、`anyhow`；界面没有
+任何第三方 GUI 库，全部是 comctl32 / user32 的原生控件。图标只有一份：`assets/fastfind.ico` 由
+`app.rc` + `build.rs` 编进 exe，窗口直接使用 exe 里的这份图标资源（`WM_SETICON` + `ICON_BIG/SMALL`），
+所以资源管理器、标题栏、任务栏的图标完全一致。`app.manifest` 也是通过 `app.rc` 编进 exe 的，用来启用
+Common Controls v6（原生控件的外观）和 PerMonitorV2 DPI 感知。
+
+release 产物约 700 KB，单文件，无运行时依赖。
 
 ## 调试
 
@@ -108,7 +112,7 @@ fastfind.exe --selftest
 # 无头截图（索引完成后写 PNG 并退出），用于 UI 回归
 fastfind.exe --screenshot shot.png --pattern "*.dll" --dir "C:\Windows\System32"
 
-# 连标题栏一起截图（用 PrintWindow 抓自身窗口），用来检查窗口图标
+# 连标题栏一起截图（把窗口置顶后从屏幕抓取），用来检查窗口图标
 fastfind.exe --window-shot window.png
 
 # 剪贴板回归：把文本写进系统剪贴板，2 秒后退出；用记事本或 Get-Clipboard 验证
@@ -121,19 +125,19 @@ fastfind.exe --copy-test "hello"
 
 | 文件 | 作用 |
 | --- | --- |
-| `src/main.rs` | 参数解析、eframe 启动 |
-| `src/app.rs` | egui 界面、索引线程、搜索请求调度 |
+| `src/main.rs` | 参数解析、入口（普通启动 / 调试模式） |
+| `src/ui.rs` | 原生 Win32 界面：窗口过程、布局、列表虚表、搜索调度、菜单与快捷键 |
 | `src/mft.rs` | `$MFT` 读取、FILE 记录/属性/runlist 解析 |
 | `src/index.rs` | 内存索引、目录路径 memo、`dir_map`、祖先链判断 |
 | `src/search.rs` | 查询解析、目录范围、搜索线程 |
 | `src/wildcard.rs` | `*` / `?` 通配符匹配（含专用快速路径与测试） |
 | `src/volume.rs` | 卷句柄、NTFS 几何信息、固定磁盘枚举 |
-| `src/winutil.rs` | Win32 小工具、剪贴板（`CF_HDROP`）、文件夹选择框、大小/时间/数字格式化 |
-| `src/icon.rs` | 窗口图标：加载 exe 内嵌的 .ico 并 `WM_SETICON`（另有绘制版作后备） |
+| `src/winutil.rs` | Win32 小工具、剪贴板（`CF_HDROP`）、文件夹选择框、截图、大小/时间/数字格式化 |
 | `src/i18n.rs` | 中英文界面（按 Windows 显示语言选择，可用 `FASTFIND_LANG` 覆盖） |
 | `src/elevate.rs` | 管理员权限检测与 UAC 重启 |
 | `src/selftest.rs` | `--selftest` 报告 |
 | `src/png.rs` | 截图用的无依赖 PNG 编码 |
-| `app.rc` / `build.rs` | 把 `assets/fastfind.ico` 和版本信息编进 exe |
+| `app.rc` / `build.rs` | 把 `assets/fastfind.ico`、版本信息和 `app.manifest` 编进 exe |
+| `app.manifest` | Common Controls v6、PerMonitorV2 DPI、长路径 |
 
 MIT License.

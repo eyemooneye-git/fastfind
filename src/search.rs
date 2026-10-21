@@ -27,6 +27,8 @@ pub enum DirScope {
 pub struct Query {
     pub wc: Wildcard,
     pub dir: Option<(Option<char>, String)>,
+    /// The directory filter as the user typed it, for display only.
+    label: Option<String>,
 }
 
 /// `"D:\Games\"` -> `(Some('d'), "d:\games")`, `"windows"` -> `(None, "windows")`.
@@ -58,18 +60,27 @@ fn normalize_dir(dir: &str) -> Option<(Option<char>, String)> {
 }
 
 impl Query {
-    pub fn parse(pattern: &str, dir: &str) -> Self {
+    pub fn parse(pattern: &str, raw_dir: &str) -> Self {
+        let dir = normalize_dir(raw_dir);
+        let label = dir.as_ref().map(|_| {
+            let mut s = raw_dir.trim().replace('/', "\\");
+            while s.ends_with('\\') {
+                s.pop();
+            }
+            s
+        });
         Self {
             wc: Wildcard::new(pattern),
-            dir: normalize_dir(dir),
+            dir,
+            label,
         }
     }
 
     /// Human readable description of the directory filter, for the status bar.
     pub fn dir_label(&self) -> String {
-        match &self.dir {
+        match &self.label {
             None => crate::i18n::all_drives().to_owned(),
-            Some((_, p)) => p.clone(),
+            Some(p) => p.clone(),
         }
     }
 
@@ -292,5 +303,15 @@ mod tests {
             normalize_dir("Windows/System32"),
             Some((None, "windows\\system32".to_owned()))
         );
+    }
+
+    #[test]
+    fn dir_label_keeps_the_typed_spelling() {
+        assert_eq!(Query::parse("*.log", "").dir_label(), crate::i18n::all_drives());
+        assert_eq!(
+            Query::parse("*.log", "  C:/Windows/Logs/  ").dir_label(),
+            "C:\\Windows\\Logs"
+        );
+        assert_eq!(Query::parse("*.log", "D:\\").dir_label(), "D:");
     }
 }

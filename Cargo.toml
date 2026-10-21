@@ -7,14 +7,7 @@ license = "MIT"
 
 [dependencies]
 anyhow = "1"
-eframe = { version = "0.37", default-features = false, features = [
-    "default_fonts",
-    "glow",
-    "clipboard",
-] }
-egui_extras = "0.37"
 memchr = "2"
-raw-window-handle = "0.6"
 rayon = "1"
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
@@ -29,10 +22,13 @@ windows-sys = { version = "0.61", features = [
     "Win32_Globalization",
     "Win32_System_IO",
     "Win32_System_LibraryLoader",
+    "Win32_System_SystemServices",
     "Win32_System_Time",
     "Win32_System_Ioctl",
     "Win32_System_Threading",
     "Win32_Graphics_Gdi",
+    "Win32_UI_Controls",
+    "Win32_UI_HiDpi",
     "Win32_UI_Shell",
     "Win32_UI_Shell_Common",
     "Win32_UI_Input_KeyboardAndMouse",

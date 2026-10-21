@@ -160,3 +160,50 @@ pub fn copied_name_status() -> &'static str {
 pub fn copied_path_status() -> &'static str {
     tr("已复制路径", "Path copied")
 }
+
+pub fn admin_title() -> &'static str {
+    tr("需要管理员权限", "Administrator rights required")
+}
+
+pub fn admin_body() -> &'static str {
+    tr(
+        "读取 NTFS 的 $MFT 需要管理员权限。\n\n是否以管理员身份重新启动？",
+        "Reading the NTFS $MFT requires administrator rights.\n\nRestart as administrator?",
+    )
+}
+
+pub fn indexing_wait() -> &'static str {
+    tr("正在建立索引，请稍候…", "Building the index, please wait…")
+}
+
+pub fn empty_hint() -> &'static str {
+    tr(
+        "输入文件名通配符开始搜索\r\n\r\n例如：*.log      report_???.docx      *.mp4",
+        "Type a file name wildcard to start\r\n\r\ne.g. *.log      report_???.docx      *.mp4",
+    )
+}
+
+pub fn no_matches() -> &'static str {
+    tr("没有匹配的文件", "No matching files")
+}
+
+pub fn pattern_cue() -> &'static str {
+    tr(
+        "输入即搜索；支持 * 和 ?，例如 *.log、report_???.docx",
+        "Search as you type; * and ? are supported, e.g. *.log, report_???.docx",
+    )
+}
+
+pub fn dir_cue() -> &'static str {
+    tr(
+        "留空 = 全部磁盘；双击选择文件夹",
+        "Empty = all drives; double-click to pick a folder",
+    )
+}
+
+pub fn row_help() -> &'static str {
+    tr(
+        "双击或 Enter 打开所在文件夹 · 右键菜单 · Ctrl+C 复制文件",
+        "Double-click or Enter opens the folder · right-click for menu · Ctrl+C copies the file",
+    )
+}
