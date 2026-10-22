@@ -99,7 +99,7 @@ cargo build --release
 依赖：`windows-sys`（Win32 API）、`rayon`（并行解析）、`memchr`（子串搜索）、`anyhow`；界面没有
 任何第三方 GUI 库，全部是 comctl32 / user32 的原生控件。图标只有一份：`assets/fastfind.ico` 由
 `app.rc` + `build.rs` 编进 exe，窗口直接使用 exe 里的这份图标资源（`WM_SETICON` + `ICON_BIG/SMALL`），
-所以资源管理器、标题栏、任务栏的图标完全一致。`app.manifest` 也是通过 `app.rc` 编进 exe 的，用来启用
+所以资源管理器、标题栏、任务栏的图标完全一致。`fastfind.manifest` 也是通过 `app.rc` 编进 exe 的，用来启用
 Common Controls v6（原生控件的外观）和 PerMonitorV2 DPI 感知。
 
 release 产物约 700 KB，单文件，无运行时依赖。
@@ -138,7 +138,7 @@ fastfind.exe --copy-test "hello"
 | `src/elevate.rs` | 管理员权限检测与 UAC 重启 |
 | `src/selftest.rs` | `--selftest` 报告 |
 | `src/png.rs` | 截图用的无依赖 PNG 编码 |
-| `app.rc` / `build.rs` | 把 `assets/fastfind.ico`、版本信息和 `app.manifest` 编进 exe |
-| `app.manifest` | Common Controls v6、PerMonitorV2 DPI、长路径 |
+| `app.rc` / `build.rs` | 把 `assets/fastfind.ico`、版本信息和 `fastfind.manifest` 编进 exe |
+| `fastfind.manifest` | Common Controls v6、PerMonitorV2 DPI、长路径 |
 
 MIT License.

@@ -1,6 +1,6 @@
 1 ICON "assets/fastfind.ico"
 
-1 24 "app.manifest"
+1 24 "fastfind.manifest"
 
 1 VERSIONINFO
 FILEVERSION 0,1,0,0

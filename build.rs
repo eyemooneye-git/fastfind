@@ -8,7 +8,7 @@ use std::process::Command;
 
 fn main() {
     println!("cargo:rerun-if-changed=app.rc");
-    println!("cargo:rerun-if-changed=app.manifest");
+    println!("cargo:rerun-if-changed=fastfind.manifest");
     println!("cargo:rerun-if-changed=assets/fastfind.ico");
 
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
@@ -22,7 +22,7 @@ fn main() {
     // Name the .res after its content so changing the icon relinks the exe.
     let ico = std::fs::read("assets/fastfind.ico").unwrap_or_default();
     let script = std::fs::read("app.rc").unwrap_or_default();
-    let manifest = std::fs::read("app.manifest").unwrap_or_default();
+    let manifest = std::fs::read("fastfind.manifest").unwrap_or_default();
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
     for b in ico.iter().chain(script.iter()).chain(manifest.iter()) {
         hash ^= u64::from(*b);
