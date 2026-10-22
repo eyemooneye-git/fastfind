@@ -1,28 +1,29 @@
-# ---- Rust / Cargo ----
+# Rust 构建输出
 /target/
-**/*.rs.bk
+
+# 编译/链接产生的中间文件
 *.pdb
 *.ilk
 *.exp
-
-# ---- 构建产物 ----
-# 交付用的 exe 由 cargo build 生成，不入库
-/FastFind.exe
-/fastfind.exe
-# build.rs 用 rc.exe 编出的资源（正常情况下在 target/ 里）
+*.lib
+*.obj
 *.res
 
-# ---- 本地调试输出 ----
-*.log
-/shot*.png
-/final-shot*.png
-/window-shot*.png
-
-# ---- 编辑器 / 系统 ----
+# 编辑器与 Visual Studio
 # .vscode/
 .idea/
-*.swp
-*~
+.vs/
+*.user
+*.suo
+
+# Windows / macOS 系统文件
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+# 临时文件
+*.tmp
+*.log
+
+# exe文件
+*.exe
