@@ -1227,10 +1227,17 @@ unsafe fn layout(hwnd: HWND) {
     MoveWindow(h_list, m.pad, m.list_y, list_w, m.list_h, 1);
 
     // Column widths: name fixed, folder takes the rest.
-    let c0 = scale(dpi, 340).min((list_w / 2).max(scale(dpi, 120)));
+    // 大小和修改时间保持固定宽度
     let c2 = scale(dpi, 100);
-    let c3 = scale(dpi, 150);
-    let c1 = (list_w - c0 - c2 - c3 - scale(dpi, 24)).max(scale(dpi, 120));
+    let c3 = scale(dpi, 120);
+    
+    // 计算扣除固定列和边距后，剩下的可用宽度
+    let remaining = (list_w - c2 - c3 - scale(dpi, 24)).max(scale(dpi, 240));
+    
+    // 名称占剩余空间的 30%，目录占 70%
+    let c0 = (remaining * 30 / 100).max(scale(dpi, 150)); 
+    let c1 = (remaining - c0).max(scale(dpi, 120));
+    
     for (i, w) in [(0, c0), (1, c1), (2, c2), (3, c3)] {
         SendMessageW(h_list, LVM_SETCOLUMNWIDTH, i, w as isize);
     }
