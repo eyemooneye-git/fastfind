@@ -8,6 +8,7 @@
 //! The indexing/search core is unchanged; this module only drives it.
 
 use std::cell::{Cell, RefCell};
+use std::fs;
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, RwLock};
@@ -25,9 +26,9 @@ use windows_sys::Win32::Graphics::Gdi::{
 };
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::Controls::{
-    InitCommonControlsEx, LVCF_SUBITEM, LVCF_TEXT, LVCF_WIDTH, LVCOLUMNW, LVCFMT_LEFT,
+    HDN_ENDTRACKW, InitCommonControlsEx, LVCF_SUBITEM, LVCF_TEXT, LVCF_WIDTH, LVCOLUMNW, LVCFMT_LEFT,
     LVCFMT_RIGHT, LVIF_TEXT, LVIS_FOCUSED, LVIS_SELECTED, LVITEMW, LVN_GETDISPINFO,
-    LVN_ITEMCHANGED, LVN_KEYDOWN, LVM_INSERTCOLUMNW, LVM_SETCOLUMNWIDTH,
+    LVN_ITEMCHANGED, LVN_KEYDOWN, LVM_GETCOLUMNWIDTH, LVM_INSERTCOLUMNW, LVM_SETCOLUMNWIDTH,
     LVM_SETEXTENDEDLISTVIEWSTYLE, LVM_SETITEMCOUNT, LVM_SETITEMSTATE, LVSICF_NOINVALIDATEALL,
     LVSICF_NOSCROLL, LVS_EX_DOUBLEBUFFER, LVS_EX_FULLROWSELECT, LVS_EX_LABELTIP, LVS_OWNERDATA,
     LVS_REPORT, LVS_SHOWSELALWAYS, LVS_SINGLESEL, NM_DBLCLK, NMHDR, NMITEMACTIVATE, NM_RCLICK,
@@ -181,6 +182,8 @@ struct App {
     copy_test: Option<String>,
     shot_pattern: String,
     shot_dir: String,
+    column_widths: Option<[i32; 4]>,
+    columns_customized: bool,
 }
 
 thread_local! {
@@ -368,6 +371,7 @@ unsafe extern "system" fn wndproc(
             0
         }
         WM_CLOSE => {
+            save_column_widths(hwnd);
             DestroyWindow(hwnd);
             0
         }
@@ -476,6 +480,16 @@ unsafe fn on_command(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) {
 unsafe fn on_notify(hwnd: HWND, lparam: LPARAM) -> LRESULT {
     let nm = lparam as *const NMHDR;
     match (*nm).code {
+        HDN_ENDTRACKW => {
+            with_app_mut(|a| {
+                a.columns_customized = true;
+                if let Some(widths) = get_column_widths(a.h_list, a.dpi) {
+                    a.column_widths = Some(widths);
+                }
+            });
+            save_column_widths(hwnd);
+            0
+        }
         LVN_GETDISPINFO => {
             // Arrives synchronously from LVM_SETITEMCOUNT; never while borrowed.
             let di = lparam as *mut NMLVDISPINFOW;
@@ -735,6 +749,7 @@ impl App {
         let (req_tx, res_rx) = search::spawn_worker(volumes.clone());
         let (index_tx, index_rx) = channel();
         let dpi = GetDpiForWindow(hwnd).max(96);
+        let column_widths = load_column_widths();
         Self {
             hwnd,
             dpi,
@@ -769,6 +784,8 @@ impl App {
             copy_test: None,
             shot_pattern: String::new(),
             shot_dir: String::new(),
+            column_widths: column_widths,
+            columns_customized: column_widths.is_some(),
         }
     }
 
@@ -870,10 +887,26 @@ impl App {
         );
 
         let columns: [(&str, i32, i32); 4] = [
-            (i18n::tr("名称", "Name"), scale(dpi, 340), LVCFMT_LEFT),
-            (i18n::tr("所在目录", "Folder"), scale(dpi, 420), LVCFMT_LEFT),
-            (i18n::tr("大小", "Size"), scale(dpi, 100), LVCFMT_RIGHT),
-            (i18n::tr("修改时间", "Modified"), scale(dpi, 150), LVCFMT_LEFT),
+            (
+                i18n::tr("名称", "Name"),
+                self.column_widths.map_or(scale(dpi, 340), |w| scale(dpi, w[0])),
+                LVCFMT_LEFT,
+            ),
+            (
+                i18n::tr("所在目录", "Folder"),
+                self.column_widths.map_or(scale(dpi, 420), |w| scale(dpi, w[1])),
+                LVCFMT_LEFT,
+            ),
+            (
+                i18n::tr("大小", "Size"),
+                self.column_widths.map_or(scale(dpi, 100), |w| scale(dpi, w[2])),
+                LVCFMT_RIGHT,
+            ),
+            (
+                i18n::tr("修改时间", "Modified"),
+                self.column_widths.map_or(scale(dpi, 150), |w| scale(dpi, w[3])),
+                LVCFMT_LEFT,
+            ),
         ];
         for (i, (name, width, align)) in columns.iter().enumerate() {
             let mut buf: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
@@ -1164,6 +1197,64 @@ fn scale(dpi: u32, value: i32) -> i32 {
     (value * dpi as i32 + 48) / 96
 }
 
+fn column_config_path() -> Option<PathBuf> {
+    std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .map(|base| base.join("FastFind").join("columns.cfg"))
+}
+
+fn load_column_widths() -> Option<[i32; 4]> {
+    let text = fs::read_to_string(column_config_path()?).ok()?;
+    let parts: Vec<&str> = text.split(',').map(str::trim).collect();
+    if parts.len() != 4 {
+        return None;
+    }
+    let widths: Option<[i32; 4]> = Some([
+        parts[0].parse().ok()?,
+        parts[1].parse().ok()?,
+        parts[2].parse().ok()?,
+        parts[3].parse().ok()?,
+    ]);
+    widths.filter(|values| values.iter().all(|width| (40..=10000).contains(width)))
+}
+
+unsafe fn get_column_widths(h_list: HWND, dpi: u32) -> Option<[i32; 4]> {
+    if h_list.is_null() {
+        return None;
+    }
+    let mut widths = [0; 4];
+    for (i, width) in widths.iter_mut().enumerate() {
+        let value = SendMessageW(h_list, LVM_GETCOLUMNWIDTH, i, 0);
+        if value <= 0 {
+            return None;
+        }
+        *width = ((value as i32 * 96 + dpi as i32 / 2) / dpi as i32).max(40);
+    }
+    Some(widths)
+}
+
+unsafe fn save_column_widths(hwnd: HWND) {
+    let _ = hwnd;
+    let widths = with_app(|a| get_column_widths(a.h_list, a.dpi)).flatten();
+    let Some(widths) = widths else {
+        return;
+    };
+    let _ = with_app_mut(|a| a.column_widths = Some(widths));
+    let Some(path) = column_config_path() else {
+        return;
+    };
+    if let Some(parent) = path.parent() {
+        if let Err(error) = fs::create_dir_all(parent) {
+            flog!("创建列宽配置目录失败: {error:#}");
+            return;
+        }
+    }
+    let text = format!("{},{},{},{}", widths[0], widths[1], widths[2], widths[3]);
+    if let Err(error) = fs::write(path, text) {
+        flog!("保存列宽失败: {error:#}");
+    }
+}
+
 fn rgb(r: u8, g: u8, b: u8) -> u32 {
     (r as u32) | ((g as u32) << 8) | ((b as u32) << 16)
 }
@@ -1226,20 +1317,24 @@ unsafe fn layout(hwnd: HWND) {
     let list_w = (width - 2 * m.pad).max(scale(dpi, 200));
     MoveWindow(h_list, m.pad, m.list_y, list_w, m.list_h, 1);
 
-    // Column widths: name fixed, folder takes the rest.
-    // 大小和修改时间保持固定宽度
-    let c2 = scale(dpi, 100);
-    let c3 = scale(dpi, 120);
-    
-    // 计算扣除固定列和边距后，剩下的可用宽度
-    let remaining = (list_w - c2 - c3 - scale(dpi, 24)).max(scale(dpi, 240));
-    
-    // 名称占剩余空间的 30%，目录占 70%
-    let c0 = (remaining * 30 / 100).max(scale(dpi, 150)); 
-    let c1 = (remaining - c0).max(scale(dpi, 120));
-    
-    for (i, w) in [(0, c0), (1, c1), (2, c2), (3, c3)] {
-        SendMessageW(h_list, LVM_SETCOLUMNWIDTH, i, w as isize);
+    let customized = with_app(|a| a.columns_customized).unwrap_or(false);
+    let saved_widths = with_app(|a| a.column_widths).unwrap_or(None);
+    if customized {
+        if let Some(widths) = saved_widths {
+            for (i, width) in widths.iter().enumerate() {
+                SendMessageW(h_list, LVM_SETCOLUMNWIDTH, i, scale(dpi, *width) as isize);
+            }
+        }
+    } else {
+        // Keep the default layout responsive until the user customizes a column.
+        let c2 = scale(dpi, 100);
+        let c3 = scale(dpi, 120);
+        let remaining = (list_w - c2 - c3 - scale(dpi, 24)).max(scale(dpi, 240));
+        let c0 = (remaining * 30 / 100).max(scale(dpi, 150));
+        let c1 = (remaining - c0).max(scale(dpi, 120));
+        for (i, w) in [(0, c0), (1, c1), (2, c2), (3, c3)] {
+            SendMessageW(h_list, LVM_SETCOLUMNWIDTH, i, w as isize);
+        }
     }
 
     SendMessageW(h_status, WM_SIZE, 0, 0);
