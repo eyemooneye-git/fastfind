@@ -96,6 +96,9 @@ cargo build --release
 # 产物：target\release\fastfind.exe
 ```
 
+`.cargo/config.toml` 为 `x86_64-pc-windows-msvc` 启用 `+crt-static`，以减少目标电脑缺少
+VC++ Redistributable 的风险。
+
 依赖：`windows-sys`（Win32 API）、`rayon`（并行解析）、`memchr`（子串搜索）、`anyhow`；界面没有
 任何第三方 GUI 库，全部是 comctl32 / user32 的原生控件。图标只有一份：`assets/fastfind.ico` 由
 `app.rc` + `build.rs` 编进 exe，窗口直接使用 exe 里的这份图标资源（`WM_SETICON` + `ICON_BIG/SMALL`），
